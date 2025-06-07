@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JWT Vulnerability Lab</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    .container { max-width: 800px; }
+    .token-display {
+      word-break: break-all;
+      background-color: #f8f9fa;
+      padding: 10px;
+      border-radius: 5px;
+      margin-top: 10px;
+    }
+    .result-panel {
+      margin-top: 15px;
+      min-height: 150px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container mt-5">
+    <h1 class="text-center mb-4">JWT Vulnerability Lab</h1>
+    
+    <div class="card mb-4">
+      <div class="card-header">
+        Authentication
+      </div>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-md-6">
+            <h5>Login</h5>
+            <form id="loginForm">
+              <div class="mb-3">
+                <label for="loginUsername" class="form-label">Username</label>
+                <input type="text" class="form-control" id="loginUsername" placeholder="username">
+              </div>
+              <div class="mb-3">
+                <label for="loginPassword" class="form-label">Password</label>
+                <input type="password" class="form-control" id="loginPassword" placeholder="password">
+              </div>
+              <button type="submit" class="btn btn-primary">Login</button>
+            </form>
+            <div class="mt-3">
+              <p><strong>Default accounts:</strong></p>
+              <ul>
+                <li>user / userpassword</li>
+                <li>admin / adminpassword</li>
+              </ul>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <h5>Register</h5>
+            <form id="registerForm">
+              <div class="mb-3">
+                <label for="registerUsername" class="form-label">Username</label>
+                <input type="text" class="form-control" id="registerUsername" placeholder="new username">
+              </div>
+              <div class="mb-3">
+                <label for="registerPassword" class="form-label">Password</label>
+                <input type="password" class="form-control" id="registerPassword" placeholder="password">
+              </div>
+              <button type="submit" class="btn btn-success">Register</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header">
+        JWT Token
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label for="jwtToken" class="form-label">Current JWT Token</label>
+          <div id="currentToken" class="token-display">No token available. Please login first.</div>
+        </div>
+        <div class="mb-3">
+          <label for="customToken" class="form-label">Custom JWT Token</label>
+          <textarea class="form-control" id="customToken" rows="3" placeholder="Paste a custom JWT token here to use instead"></textarea>
+          <button id="useCustomToken" class="btn btn-warning mt-2">Use Custom Token</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header">
+        API Tests
+      </div>
+      <div class="card-body">
+        <div class="d-grid gap-2">
+          <button id="btnSecure" class="btn btn-primary">Test Secure Endpoint</button>
+          <button id="btnAdmin" class="btn btn-danger">Test Admin Endpoint</button>
+          <button id="btnNoneAlg" class="btn btn-warning">Test 'none' Algorithm Endpoint</button>
+          <button id="btnAlgConfusion" class="btn btn-warning">Test Algorithm Confusion Endpoint</button>
+          <button id="btnMissingValidation" class="btn btn-warning">Test Missing Validation Endpoint</button>
+          <button id="btnDebug" class="btn btn-info">Get Debug Info (Secret Leak)</button>
+        </div>
+        <div class="card mt-3">
+          <div class="card-header">Response</div>
+          <div class="card-body">
+            <pre id="apiResponse" class="result-panel">Response will appear here</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header">
+        JWT Tool
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">Decode Token</label>
+          <textarea class="form-control" id="tokenToDecode" rows="3" placeholder="Paste a JWT token to decode"></textarea>
+          <button id="decodeToken" class="btn btn-secondary mt-2">Decode</button>
+        </div>
+        <div class="mt-3">
+          <h6>Decoded Token:</h6>
+          <div class="row">
+            <div class="col-md-4">
+              <h6>Header</h6>
+              <pre id="decodedHeader" class="result-panel small"></pre>
+            </div>
+            <div class="col-md-4">
+              <h6>Payload</h6>
+              <pre id="decodedPayload" class="result-panel small"></pre>
+            </div>
+            <div class="col-md-4">
+              <h6>Signature</h6>
+              <pre id="decodedSignature" class="result-panel small"></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // API base URL
+    const API_BASE_URL = 'http://localhost:3000';
+    
+    // DOM Elements
+    const loginForm = document.getElementById('loginForm');
+    const registerForm = document.getElementById('registerForm');
+    const currentToken = document.getElementById('currentToken');
+    const customToken = document.getElementById('customToken');
+    const useCustomTokenBtn = document.getElementById('useCustomToken');
+    const apiResponse = document.getElementById('apiResponse');
+    const tokenToDecode = document.getElementById('tokenToDecode');
+    const decodeTokenBtn = document.getElementById('decodeToken');
+    const decodedHeader = document.getElementById('decodedHeader');
+    const decodedPayload = document.getElementById('decodedPayload');
+    const decodedSignature = document.getElementById('decodedSignature');
+    
+    // API Test buttons
+    const btnSecure = document.getElementById('btnSecure');
+    const btnAdmin = document.getElementById('btnAdmin');
+    const btnNoneAlg = document.getElementById('btnNoneAlg');
+    const btnAlgConfusion = document.getElementById('btnAlgConfusion');
+    const btnMissingValidation = document.getElementById('btnMissingValidation');
+    const btnDebug = document.getElementById('btnDebug');
+    
+    // Check for stored token
+    let token = localStorage.getItem('jwtToken');
+    if (token) {
+      currentToken.textContent = token;
+    }
+    
+    // Register Form Handler
+    registerForm.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const username = document.getElementById('registerUsername').value;
+      const password = document.getElementById('registerPassword').value;
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/register`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ username, password })
+        });
+        
+        const data = await response.json();
+        apiResponse.textContent = JSON.stringify(data, null, 2);
+        
+        if (response.ok) {
+          alert('Registration successful! You can now login.');
+          document.getElementById('registerUsername').value = '';
+          document.getElementById('registerPassword').value = '';
+        }
+      } catch (error) {
+        apiResponse.textContent = `Error: ${error.message}`;
+      }
+    });
+    
+    // Login Form Handler
+    loginForm.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const username = document.getElementById('loginUsername').value;
+      const password = document.getElementById('loginPassword').value;
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ username, password })
+        });
+        
+        const data = await response.json();
+        apiResponse.textContent = JSON.stringify(data, null, 2);
+        
+        if (response.ok && data.token) {
+          localStorage.setItem('jwtToken', data.token);
+          currentToken.textContent = data.token;
+        }
+      } catch (error) {
+        apiResponse.textContent = `Error: ${error.message}`;
+      }
+    });
+    
+    // Use Custom Token Handler
+    useCustomTokenBtn.addEventListener('click', function() {
+      const newToken = customToken.value.trim();
+      if (newToken) {
+        localStorage.setItem('jwtToken', newToken);
+        currentToken.textContent = newToken;
+        customToken.value = '';
+      }
+    });
+    
+    // API Test Button Handlers
+    btnSecure.addEventListener('click', () => makeApiCall('/api/secure'));
+    btnAdmin.addEventListener('click', () => makeApiCall('/api/admin'));
+    btnNoneAlg.addEventListener('click', () => makeApiCall('/api/none-alg'));
+    btnAlgConfusion.addEventListener('click', () => makeApiCall('/api/alg-confusion'));
+    btnMissingValidation.addEventListener('click', () => makeApiCall('/api/missing-validation'));
+    btnDebug.addEventListener('click', () => makeApiCall('/api/debug'));
+    
+    // Make API Call Function
+    async function makeApiCall(endpoint) {
+      const token = localStorage.getItem('jwtToken');
+      
+      if (!token) {
+        apiResponse.textContent = 'No token available. Please login first.';
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        const data = await response.json();
+        apiResponse.textContent = JSON.stringify(data, null, 2);
+      } catch (error) {
+        apiResponse.textContent = `Error: ${error.message}`;
+      }
+    }
+    
+    // Decode Token Handler
+    decodeTokenBtn.addEventListener('click', function() {
+      const token = tokenToDecode.value.trim();
+      
+      if (!token) {
+        alert('Please enter a token to decode');
+        return;
+      }
+      
+      try {
+        const parts = token.split('.');
+        if (parts.length !== 3) {
+          throw new Error('Invalid JWT format');
+        }
+        
+        const header = JSON.parse(atob(parts[0]));
+        const payload = JSON.parse(atob(parts[1]));
+        
+        decodedHeader.textContent = JSON.stringify(header, null, 2);
+        decodedPayload.textContent = JSON.stringify(payload, null, 2);
+        decodedSignature.textContent = `[Signature]: ${parts[2]}`;
+      } catch (error) {
+        decodedHeader.textContent = '';
+        decodedPayload.textContent = '';
+        decodedSignature.textContent = `Error: ${error.message}`;
+      }
+    });
+    
+    // Helper function for base64 URL decoding (atob doesn't handle URL safe base64)
+    function atob(str) {
+      // Replace URL-safe characters and add padding if needed
+      let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+      while (base64.length % 4 !== 0) {
+        base64 += '=';
+      }
+      return window.atob(base64);
+    }
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html> 
