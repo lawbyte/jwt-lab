@@ -31,7 +31,7 @@ This lab demonstrates the following JWT vulnerabilities:
 
 1. Clone this repository:
 ```
-git clone <repository-url>
+git clone https://github.com/lawbyte/jwt-lab
 cd jwt-vulnerability-lab
 ```
 
